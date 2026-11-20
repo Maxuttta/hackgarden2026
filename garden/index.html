@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; object-src 'none'; base-uri 'none'">
+<title>Cyber Garden · Проверка проекта</title>
+<link rel="stylesheet" href="style.css"><link rel="stylesheet" href="workbench.css">
+</head>
+<body>
+<header>
+  <span class="appmark" title="Cyber Garden" aria-label="Cyber Garden">CG</span>
+  <details class="action-menu" id="actionMenu"><summary aria-label="Меню сценария" title="Меню сценария"><i data-icon="menu"></i></summary><div class="filetools"><button id="undo" aria-label="Отменить изменение" title="Отменить (Ctrl+Z)"><i data-icon="return"></i>Отменить</button><button id="redo" aria-label="Вернуть изменение" title="Вернуть (Ctrl+Shift+Z)"><i data-icon="return"></i>Вернуть</button><button id="loadGraph">Импорт</button><button id="saveGraph">Экспорт</button><button id="ci">CI/CD</button></div></details>
+  <button id="folder" title="Открыть папку проекта"><span class="projectmark">КТ</span><span id="project">Учебный Kotlin-проект</span><i data-icon="chevronDown"></i></button>
+  <span class="app-title">Cyber Garden</span>
+  <div class="header-actions"><button id="run" class="runcontrol" title="Запустить проверку (Ctrl+Enter)"><i data-icon="play"></i><span>Запустить</span></button><button id="settings" aria-label="Настройки подключений" title="Настройки подключений"><i data-icon="settings"></i></button></div>
+</header>
+<main id="workbench">
+<nav class="rail rail-left" aria-label="Панели проекта">
+ <button id="projectToggle" aria-label="Дерево проекта" title="Дерево проекта"><i data-icon="project"></i></button>
+ <button id="workflowShortcut" aria-label="Открыть сценарий" title="Открыть сценарий"><i data-icon="git"></i></button>
+ <button id="reportToggle" class="rail-bottom" aria-label="Панель результатов" title="Панель результатов"><i data-icon="terminal"></i></button>
+</nav>
+<aside id="projectPane" aria-label="Проект">
+ <div class="panel-title project-tools"><h2>Проект</h2><button id="chooseFolder" title="Выбрать папку проекта"><i data-icon="folderOpen"></i>Открыть…</button></div>
+ <div id="tree"></div>
+ <div class="catalog-foot"><small id="filecount">3 файла · демо</small><button id="catalog" title="Открыть справочник SCA"><i data-icon="layers"></i>Справочник SCA</button><small id="catalogName">Учебный · 1 запись</small></div>
+</aside>
+<section class="editor" aria-label="Рабочая область">
+ <div class="tabstrip"><button id="workflowTab" class="edit-tab" aria-pressed="true"><i data-icon="git"></i>Сценарий проверки</button><div id="openTabs"></div><input type="file" id="json" accept=".json" hidden></div>
+ <div class="graphbar"><div class="graph-title">Схема <small id="summary"></small></div><button id="templates"><i data-icon="layers"></i>Шаблоны</button><button id="generate"><i data-icon="spark"></i>Собрать с AI</button></div>
+  <div class="stage">
+    <section id="firstCheck" aria-labelledby="firstCheckTitle" hidden>
+      <div><strong id="firstCheckTitle">Попробуйте на учебном проекте</strong><p>Проверка найдёт риски и покажет строки, которые стоит исправить.</p></div>
+      <div class="guide-actions"><button id="tryCheck">Проверить пример</button><button id="pickProject">Открыть свой проект…</button></div>
+      <button id="hideGuide" aria-label="Скрыть подсказку" title="Скрыть подсказку">×</button>
+    </section>
+    <div id="viewport" tabindex="0" aria-label="Холст сценария"><div id="spacer"><div id="canvas"><svg id="edges" aria-hidden="true"></svg><div id="nodes"></div></div></div></div>
+    <div class="zoom" aria-label="Масштаб холста"><button id="zoomOut" aria-label="Уменьшить масштаб"><i data-icon="minus"></i></button><output id="zoomValue"></output><button id="zoomIn" aria-label="Увеличить масштаб"><i data-icon="plus"></i></button><button id="fit" aria-label="Показать всю схему" title="Показать всю схему"><i data-icon="fit"></i></button></div>
+  </div>
+
+ <div id="sourceView" hidden aria-label="Просмотр исходника"><div class="source-meta"><i data-icon="fileCode"></i><span id="filePath"></span></div><div id="findingReview" hidden></div><div id="sourceScroll" tabindex="0"><div id="sourceLines"></div></div></div>
+   <section class="dock" aria-label="Результаты проверки">
+    <div class="tabs"><button id="latest" class="active"><i data-icon="terminal"></i>Отчёт <span id="resultCount" hidden></span></button><button id="history"><i data-icon="clock"></i>История</button></div>
+    <div id="report"></div>
+  </section>
+</section>
+
+<aside id="blockPane" aria-label="Библиотека блоков">
+ <h2 class="panel-title">Блоки сценария</h2>
+ <div class="library">
+   <label class="search"><i data-icon="search"></i><input id="blockSearch" type="search" aria-label="Поиск блоков" placeholder="Найти блок"><kbd>Ctrl K</kbd></label>
+   <div id="palette"></div><p id="noMatches" hidden>Таких блоков нет. Попробуйте другое название.</p>
+ </div>
+</aside>
+<nav class="rail rail-right" aria-label="Инструменты сценария"><button id="blockToggle" aria-label="Библиотека блоков" title="Библиотека блоков"><i data-icon="blocks"></i></button><button id="searchShortcut" aria-label="Найти блок" title="Найти блок (Ctrl+K)"><i data-icon="search"></i></button></nav>
+</main>
+<footer><span id="crumb"></span><span id="hint" role="status">Готово к запуску</span></footer>
+<dialog id="modal" aria-labelledby="dialogTitle"><form method="dialog"><button class="close" aria-label="Закрыть" title="Закрыть (Esc)">×</button></form><div id="form"></div></dialog>
+<script src="icons.js"></script><script src="ui.js"></script>
+<script src="workbench.js"></script></body></html>
