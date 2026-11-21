@@ -4,7 +4,7 @@
 
 ## Запуск на Windows
 
-Из корня `hackgarden2026-main`:
+Из корня репозитория:
 
 ```powershell
 cd server
@@ -38,7 +38,7 @@ $env:REPORT_WEBHOOK_KEY = '<токен интеграции>'
 node garden/cli.cjs ../cyber-garden-testbed ../cyber-garden-testbed/workflow.json ../cyber-garden-testbed/advisories.json
 ```
 
-Команду CLI запускайте из корня `hackgarden2026-main`; в сценарии нужен блок notify. Можно загружать JSON полного результата CLI или тело `security.report`: сервер принимает поле `findings`, остальные служебные поля не требуются. Содержимое исходников и значения секретов сервер специально не добавляет в PDF.
+Команду CLI запускайте из корня репозитория; в сценарии нужен блок notify. Можно загружать JSON полного результата CLI или тело `security.report`: сервер принимает поле `findings`, остальные служебные поля не требуются. Содержимое исходников и значения секретов сервер специально не добавляет в PDF.
 
 ## Команды бота
 
@@ -72,7 +72,7 @@ node garden/cli.cjs ../cyber-garden-testbed ../cyber-garden-testbed/workflow.jso
 
 | Метод | Путь | Назначение |
 | --- | --- | --- |
-| GET | `/health` | Проверка сервера, наличие настройки токена (не доступность Telegram) |
+| GET | `/health` | `ok`, `telegramConfigured` (токен настроен), `telegramConnected` (polling Telegram подключён) |
 | POST | `/api/register` | `{ "login": "user", "password": "..." }` |
 | POST | `/api/login` | Та же структура; возвращает токен и устанавливает cookie |
 | GET | `/api/me` | ID текущей и список активных сессий |

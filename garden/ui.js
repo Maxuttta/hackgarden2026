@@ -397,6 +397,12 @@ function report(r){
  const actions=document.createElement('div');actions.className='report-send';
  const sendButton=document.createElement('button');sendButton.id='sendTelegram';sendButton.innerHTML=iconSvg('send')+'Отправить в Telegram';sendButton.disabled=reportSending.has(r);
  const feedback=document.createElement('small');feedback.id='sendTelegramStatus';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');
+ if(r.telegramDelivery){
+   feedback.textContent=r.telegramDelivery.queued
+     ?'PDF поставлен в очередь отправки в Telegram.'
+     :'Автоотправка в Telegram не удалась. '+r.telegramDelivery.error;
+   if(r.telegramDelivery.queued&&r.telegramDelivery.id)feedback.title='Отчёт '+r.telegramDelivery.id;
+ }
  actions.append(sendButton,feedback);$('report').querySelector('.report-head').after(actions);
  sendButton.onclick=async()=>{
    if(reportSending.has(r))return;
@@ -434,7 +440,9 @@ async function run(){
    }
    runProjects.set(r,projectGeneration);r.project=$('project').textContent;
    r.log.forEach(l=>l.name=kinds[graph.nodes.find(n=>n.id===l.id).type][0]);runs.unshift(r);runs=runs.slice(0,20);report(r);
-   note(r.ok?'Проверка завершена.':'Проверка остановлена. Подробности в журнале.');
+   note(r.telegramDelivery?.queued?'Проверка завершена. PDF в очереди Telegram.':
+     r.telegramDelivery?'Проверка завершена. Не удалось отправить PDF в Telegram.':
+     r.ok?'Проверка завершена.':'Проверка остановлена. Подробности в журнале.');
    while(runs.length){try{localStorage.setItem('garden.history',JSON.stringify(runs));break;}catch{runs.pop();}}
  }catch(e){
    const reason=e.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/,'');
@@ -452,6 +460,11 @@ function renderProgress(){
  (current?.type==='ai'?'<small>Ожидаем пояснения модели. Находки уже собраны.</small>':'')+'</div>';
 }
 garden.status(s=>{
+ if(s.phase==='telegram'){
+   const message='Ставим PDF в очередь отправки в Telegram…';
+   if(busy&&$('latest').classList.contains('active'))$('report').querySelector('.run-progress b')?.replaceChildren(message);
+   note(message);return;
+ }
  states[s.id]=s.state;draw();const n=graph.nodes.find(n=>n.id===s.id);
  if(busy&&$('latest').classList.contains('active'))renderProgress();
  if(n&&s.state==='Выполняется')note('Выполняется блок «'+kinds[n.type][0]+'»…');
@@ -518,12 +531,15 @@ async function openConnections(fromGenerator=false){
    '<div id="hookPanel"><label>Адрес webhook<input id="hook" type="password" autocomplete="new-password"></label>'+
    '<label>Токен сессии сервера отчётов (если требуется)<input id="hookKey" type="password" autocomplete="new-password"></label>'+
    '<label><input id="clearHookKey" type="checkbox"> Удалить сохранённый токен webhook</label></div><small id="deliveryHint"></small>'+
+   '<hr><label><input id="autoSendTelegram" type="checkbox"> Автоматически отправлять PDF в Telegram</label>'+
+   '<small>После успешной проверки. Чтобы привязать бота, откройте «Telegram» в верхней панели.</small>'+
    '<p id="connectionFeedback" role="alert"></p><button id="apply">Сохранить</button>'+
    (fromGenerator?'<button id="backToPrompt">К описанию</button>':''));
  const provider=$('provider'),model=$('model'),endpoint=$('endpoint'),key=$('key'),hook=$('hook'),delivery=$('delivery'),feedback=$('connectionFeedback');
  const names={local:local?c.model:'',api:local?'':c.model};
  let current=originalProvider;
  provider.value=originalProvider;delivery.value=c.hasHook?'webhook':'local';
+ $('autoSendTelegram').checked=c.autoSendTelegram;
  endpoint.value=local?'':c.endpoint;
  function updateKey(){
    const retained=c.hasKey&&endpoint.value.trim()===c.endpoint;
@@ -564,7 +580,8 @@ async function openConnections(fromGenerator=false){
    try{
      await garden.configure({model:provider.value==='rules'?'':model.value.trim(),endpoint:provider.value==='local'?localModelEndpoint:provider.value==='api'?endpoint.value.trim():c.endpoint,
        key:provider.value==='api'?key.value.trim():'',clearKey:provider.value==='api'&&$('clearKey').checked,
-       hook:hook.value.trim(),hookKey:$('hookKey').value.trim(),clearHookKey:$('clearHookKey').checked,localDelivery:delivery.value==='local'});
+       hook:hook.value.trim(),hookKey:$('hookKey').value.trim(),clearHookKey:$('clearHookKey').checked,localDelivery:delivery.value==='local',
+       autoSendTelegram:$('autoSendTelegram').checked});
      if(!button.isConnected||!$('modal').open)return;
      if(fromGenerator)await openGenerator();else $('modal').close();note('Подключения сохранены.');
    }catch(e){feedback.textContent=connectionError(e);}finally{button.disabled=false;}

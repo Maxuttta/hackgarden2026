@@ -104,13 +104,14 @@ app.whenReady().then(async()=>{
     return {items,library};
   });
   ipcMain.handle('garden:generate',(_,prompt)=>require('./model.cjs').generate(require('./services.cjs').post,cfg,prompt));
-  ipcMain.handle('garden:settings',()=>({model:cfg.model,endpoint:cfg.endpoint,hasHook:!!cfg.hook,hasKey:!!cfg.key,hasHookKey:!!cfg.hookKey}));
+  ipcMain.handle('garden:settings',()=>({model:cfg.model,endpoint:cfg.endpoint,hasHook:!!cfg.hook,hasKey:!!cfg.key,hasHookKey:!!cfg.hookKey,autoSendTelegram:cfg.autoSendTelegram===true}));
   ipcMain.handle('garden:localModels',localModels);
   ipcMain.handle('garden:configure',async(_,v)=>{
     const target=endpoint(v.endpoint).href;
     const keepKey=!v.reset&&!v.clearKey&&cfg.endpoint===target;
     const nextHook=v.reset||v.localDelivery?'':v.hook?endpoint(v.hook).href:cfg.hook;
     const next={...cfg,model:v.model.trim(),endpoint:target,
+      autoSendTelegram:typeof v.autoSendTelegram==='boolean'?v.autoSendTelegram:cfg.autoSendTelegram===true,
       hook:nextHook,
       hookKey:v.reset||v.localDelivery||v.clearHookKey?'':v.hookKey||(nextHook===cfg.hook?cfg.hookKey:''),
       key:v.reset?'':v.key||(keepKey?cfg.key:'')};
@@ -182,7 +183,17 @@ app.whenReady().then(async()=>{
       }
       const result=await execute(graph,latest,catalog,services(cfg,localHook),s=>win.webContents.send('garden:status',s));
       files=latest;
-      return {...result,sourceChanged:changed,fileCount:Object.keys(files).length};
+      let telegramDelivery;
+      if(result.ok&&cfg.autoSendTelegram===true){
+        win.webContents.send('garden:status',{phase:'telegram'});
+        try{
+          const queued=await reportClient.send({project:projectName,findings:result.findings});
+          telegramDelivery={queued:true,id:queued.id};
+        }catch(error){
+          telegramDelivery={queued:false,error:error.message};
+        }
+      }
+      return {...result,telegramDelivery,sourceChanged:changed,fileCount:Object.keys(files).length};
     }finally{busy=false;}
   });
   await win.loadFile(path.join(__dirname,'index.html'));
