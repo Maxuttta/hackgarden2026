@@ -1,5 +1,6 @@
 const $=id=>document.getElementById(id);
 const kinds={
+ custom:['Пользовательская проверка','Мои блоки','#e7b36a','search'],
  manual:['Старт по кнопке','Запуск','#83c99b','play'], schedule:['По расписанию','Запуск','#83c99b','clock'],
  secrets:['Поиск секретов','Проверки','#e7b36a','key'], sca:['Зависимости Gradle','Проверки','#85b6ec','layers'],
  sast:['Анализ Kotlin','Проверки','#bd9def','fileCode'], condition:['Условие','Логика','#f1b780','git'],
@@ -64,7 +65,7 @@ function placement(slot,x,y){
  while(!fits(42,nextRow))nextRow+=106;
  return {x:42,y:nextRow};
 }
-function add(type,x,y){
+function add(type,x,y,definition){
  if(busy)return;
  showGraph();
  const start=graph.nodes.find(n=>isStart(n.type));
@@ -82,7 +83,7 @@ function add(type,x,y){
  const slots=insertionSlots();
  const attach=slot=>{
    if(busy)return;
-   const n={id:crypto.randomUUID(),type,...placement(slot,x,y)};
+   const n={id:crypto.randomUUID(),type,...placement(slot,x,y),...(type==='custom'?{definition:structuredClone(definition||{title:'Моя проверка',needle:'',path:'',severity:'medium',fix:'',caseSensitive:false})}:{})};
    const roots=isStart(type)?graph.nodes.filter(node=>!graph.edges.some(e=>e.to===node.id)):[];
    graph.nodes.push(n);
    if(slot){
@@ -97,7 +98,7 @@ function add(type,x,y){
    const added=$('nodes').querySelector('[data-node-id="'+n.id+'"]');
    added?.scrollIntoView({block:'nearest',inline:'nearest'});added?.focus({preventScroll:true});
    note('Добавлен блок «'+kinds[type][0]+'». Ctrl + Z — отменить.');
-   if(type==='schedule'||type==='condition')edit(n);
+   if(type==='schedule'||type==='condition'||type==='custom')edit(n);
  };
  if(isStart(type)||!slots.length){attach(null);return;}
  let preferred=slots.findIndex(s=>s.to?.type==='ai');
@@ -114,6 +115,7 @@ function palette(){
  const query=$('blockSearch').value.trim().toLocaleLowerCase();
  $('palette').replaceChildren();let group='',items;
  for(const [type,[title,category,accent,icon]] of Object.entries(kinds)){
+   if(type==='custom')continue;
    if(!(title+' '+category+' '+type).toLocaleLowerCase().includes(query))continue;
    if(category!==group){
      const section=document.createElement('details');section.open=true;
@@ -124,6 +126,19 @@ function palette(){
    button.innerHTML=iconSvg(icon)+esc(title);button.style.setProperty('--accent',accent);button.draggable=true;
    button.title=isStart(type)?'Настроить способ запуска: '+title:'Выбрать место для блока «'+title+'»';
    button.ondragstart=e=>e.dataTransfer.setData('text/plain',type);button.onclick=()=>add(type);items.append(button);
+ }
+ const presetHeading=document.createElement('h3');presetHeading.textContent='Шаблоны проверок';$('palette').append(presetHeading);
+ for(const definition of gardenBlockPresets){
+   if(!(definition.title+' '+definition.needle).toLocaleLowerCase().includes(query))continue;
+   const button=document.createElement('button');button.textContent=definition.title;button.title=definition.fix;button.onclick=()=>add('custom',undefined,undefined,definition);$('palette').append(button);group='Шаблоны проверок';
+ }
+ const customHeading=document.createElement('h3');customHeading.textContent='Мои блоки';$('palette').append(customHeading);
+ for(const definition of read('garden.customBlocks',[])){
+   if(!definition||typeof definition.title!=='string'||!definition.title.toLocaleLowerCase().includes(query))continue;
+   const row=document.createElement('div'),button=document.createElement('button'),editButton=document.createElement('button');
+   button.textContent=definition.title;button.title='Добавить мой блок';button.onclick=()=>add('custom',undefined,undefined,definition);
+   editButton.textContent='✎';editButton.title='Изменить или удалить мой блок';editButton.onclick=()=>editCustomBlock(null,definition);
+   row.append(button,editButton);$('palette').append(row);group='Мои блоки';
  }
  $('noMatches').hidden=!!group;
 }
@@ -286,11 +301,11 @@ function draw(){
  if(cableGesture){cableGesture.path?.remove();cableGesture=null;pending=null;}
  $('nodes').replaceChildren();$('summary').textContent=graph.nodes.length+' '+plural(graph.nodes.length,['блок','блока','блоков'])+' · '+graph.edges.length+' '+plural(graph.edges.length,['связь','связи','связей']);
  for(const n of graph.nodes){
-   const [title,group,accent,icon]=kinds[n.type],d=document.createElement('div');
+   const [baseTitle,group,accent,icon]=kinds[n.type],title=n.type==='custom'?(n.definition?.title||baseTitle):baseTitle,d=document.createElement('div');
    d.className='node';d.dataset.kind=n.type;d.dataset.nodeId=n.id;d.dataset.state=states[n.id]||'';d.tabIndex=0;
    d.setAttribute('aria-label',title+' · настройки');d.title='Настроить блок «'+title+'»';
    Object.assign(d.style,{left:n.x+'px',top:n.y+'px'});d.style.setProperty('--accent',accent);
-   d.innerHTML='<span class="glyph">'+iconSvg(icon)+'</span><div class="caption"><small>'+esc(states[n.id]||group)+'</small><b>'+title+'</b></div>';
+   d.innerHTML='<span class="glyph">'+iconSvg(icon)+'</span><div class="caption"><small>'+esc(states[n.id]||group)+'</small><b>'+esc(title)+'</b></div>';
    const names=[...(['manual','schedule'].includes(n.type)?[]:['in']),...(n.type==='condition'?['yes','no']:['next'])];
    for(const p of names){
      const b=document.createElement('button');b.className='port';b.dataset.port=p;
@@ -317,6 +332,7 @@ function plural(n,forms){return forms[n%10===1&&n%100!==11?0:n%10>=2&&n%10<=4&&(
 function modal(html){$('form').innerHTML=html;$('form').querySelector('h2').id='dialogTitle';$('modal').showModal();}
 function edit(n){
  if(busy)return;
+ if(n.type==='custom'){editCustomBlock(n);return;}
  const filtering=['condition','sca','sast','secrets'].includes(n.type);
  const minimum=n.level||(n.type==='condition'?'high':'info');
  const select=filtering?'<label>Минимальный риск<select id="level">'+Object.keys(riskLabels).reverse().map(v=>'<option value="'+v+'" '+(v===minimum?'selected':'')+'>'+riskLabels[v]+'</option>').join('')+'</select></label>':'';
@@ -405,6 +421,7 @@ function report(r){
  $('report').scrollTop=0;
 }
 async function run(){
+ if(hasUnsavedSources()){note('Сначала сохраните изменения кода (Ctrl+S) или отмените их.');return;}
  if(busy||importing)return;
  hideFirstCheck();showGraph();
  showPane('report',true);busy=true;updateUndo();states={};pending=null;draw();$('run').disabled=true;$('run').querySelector('span').textContent='Проверяем…';
@@ -460,6 +477,7 @@ document.addEventListener('keydown',e=>{
 });
 for(const kind of ['folder','catalog'])$(kind).onclick=async()=>{
  if(busy||importing)return;
+ if(kind==='folder'&&!confirmDiscardSources())return;
  importing=true;$('run').disabled=true;
  try{
    const imported=await garden.import(kind);
@@ -627,7 +645,8 @@ $('generate').onclick=()=>openGenerator();
 async function templates(action='list',item){
  try{
  const {items,library}=await garden.library(action,item);
- const list=[{title:'Проверка Kotlin-проекта',description:'Секреты, зависимости и правила Spring с доставкой отчёта.',graph:initial},...items];
+ const codeTemplates=gardenBlockPresets.map((definition,i)=>({title:definition.title,description:'Потенциальный риск: буквальный поиск «'+definition.needle+'»; результат требует проверки контекста.',graph:{nodes:[{id:'start',type:'manual',x:42,y:44},{id:'check',type:'custom',definition:structuredClone(definition),x:304,y:44},{id:'ai',type:'ai',x:566,y:44}],edges:[{from:'start',to:'check',port:'next'},{from:'check',to:'ai',port:'next'}]}}));
+ const list=[...codeTemplates,{title:'Проверка Kotlin-проекта',description:'Секреты, зависимости и правила Spring с доставкой отчёта.',graph:initial},...items];
  if($('modal').open)$('modal').close();
  modal('<h2>Библиотека шаблонов</h2><small>'+esc(library)+'</small><p><button id="choose">Выбрать общую папку…</button></p>'+list.map((t,i)=>'<p><button data-template="'+i+'">'+esc(t.title)+'</button><br><small>'+esc(t.description)+'</small></p>').join('')+'<hr><label>Название текущего сценария<input id="templateName" maxlength="100"></label><label>Что он проверяет<input id="description" maxlength="500"></label><button id="publish">Опубликовать в папке</button>');
  $('choose').onclick=()=>templates('choose');
@@ -644,7 +663,7 @@ $('ci').onclick=()=>{
 };
 
 $('githubImport').onclick=()=>{
- if(busy||importing)return;
+ if(busy||importing||!confirmDiscardSources())return;
  modal('<h2>Импорт проекта из GitHub</h2><p>Используйте учебные репозитории, разрешённые для проверки. Загружаются исходники и конфигурации без выполнения кода.</p>'+
  '<label>Ссылка на репозиторий<input id="githubUrl" type="url" placeholder="https://github.com/owner/repository" autocomplete="off"></label>'+
  '<label>Ветка или коммит (необязательно)<input id="githubBranch" maxlength="200" placeholder="По умолчанию — основная ветка"></label>'+
@@ -671,3 +690,35 @@ $('githubImport').onclick=()=>{
    }finally{options.token='';importing=false;$('run').disabled=false;button.disabled=false;}
  };
 };
+
+function editCustomBlock(node,preset){
+ const rule=node?.definition||preset||{title:'',needle:'',path:'',severity:'medium',fix:'',caseSensitive:false};
+ modal('<h2>'+ (node?'Настроить блок':'Создать или изменить блок')+'</h2><p>Собственное правило ищет текст в строках исходников. Сохраняется в «Мои блоки» и добавляется в сценарий.</p>'+
+ '<label>Название<input id="customTitle" maxlength="100" value="'+esc(rule.title)+'"></label>'+
+ '<label>Искомый текст (одна строка)<input id="customNeedle" maxlength="500" value="'+esc(rule.needle)+'"></label>'+
+ '<label>Путь содержит (необязательно)<input id="customPath" maxlength="200" value="'+esc(rule.path)+'" placeholder="Например, .kt или src/main/"></label>'+
+ '<label>Критичность<select id="customSeverity">'+Object.entries(riskLabels).map(([v,label])=>'<option value="'+v+'" '+(v===rule.severity?'selected':'')+'>'+label+'</option>').join('')+'</select></label>'+
+ '<label><input id="customCase" type="checkbox" '+(rule.caseSensitive?'checked':'')+'> Учитывать регистр</label>'+
+ '<label>Рекомендация<textarea id="customFix" maxlength="1000">'+esc(rule.fix)+'</textarea></label>'+
+ '<p id="customError" role="status"></p><button id="saveCustom">'+(node?'Сохранить блок':'Сохранить в библиотеку')+'</button>'+
+ (node||preset?'<button id="deleteCustom">'+(node?'Удалить из сценария':'Удалить из библиотеки')+'</button>':''));
+ $('saveCustom').onclick=()=>{
+   const definition={title:$('customTitle').value.trim(),needle:$('customNeedle').value,path:$('customPath').value.trim(),severity:$('customSeverity').value,fix:$('customFix').value.trim(),caseSensitive:$('customCase').checked};
+   if(!definition.title||!definition.needle.trim()||!definition.fix||/[\r\n]/.test(definition.needle)){$('customError').textContent='Заполните название, искомый текст и рекомендацию.';return;}
+   let list=read('garden.customBlocks',[]).filter(v=>v.title!==(preset?.title||node?.definition?.title||definition.title)&&v.title!==definition.title);
+   if(list.length>=50){$('customError').textContent='В библиотеке уже 50 блоков. Удалите ненужные.';return;}
+   list.push(definition);localStorage.setItem('garden.customBlocks',JSON.stringify(list));
+   if(node){node.definition=definition;states={};persist();draw();}
+   $('blockSearch').value='';palette();showPane('blocks',true);$('modal').close();note('Блок «'+definition.title+'» сохранён в библиотеке.');
+ };
+ if($('deleteCustom'))$('deleteCustom').onclick=()=>{
+   if(node){
+     const incoming=graph.edges.filter(e=>e.to===node.id),outgoing=graph.edges.filter(e=>e.from===node.id);
+     graph.nodes=graph.nodes.filter(n=>n!==node);graph.edges=graph.edges.filter(e=>e.from!==node.id&&e.to!==node.id);
+     if(incoming.length===1&&outgoing.length===1)graph.edges.push({from:incoming[0].from,port:incoming[0].port,to:outgoing[0].to});
+     states={};persist();draw();
+   }else{localStorage.setItem('garden.customBlocks',JSON.stringify(read('garden.customBlocks',[]).filter(v=>v.title!==preset.title)));palette();}
+   $('modal').close();note('Блок удалён.');
+ };
+}
+$('createCustomBlock').onclick=()=>{if(!busy&&!importing)editCustomBlock(null);};

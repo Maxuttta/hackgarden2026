@@ -122,3 +122,26 @@ footer{border:none;background:transparent;padding:0 10px;gap:20px;font-size:11px
 .port.unavailable:after{opacity:.42}
 .port.drop-target:after{background:#a1c7ff;outline:4px solid #618fcb}
 .cable-preview{fill:none;stroke:#9cc5ff;stroke-width:2.2;stroke-dasharray:6 3;pointer-events:none}
+
+.source-meta{flex-wrap:wrap;gap:8px;min-height:36px;height:auto;padding:6px 12px}
+#editSource{
+  flex:none;
+  min-height:30px;
+  padding:4px 10px;
+  gap:7px;
+  font-size:12px;
+  font-weight:600;
+  color:#c9dfff;
+  background:color-mix(in srgb,var(--focus) 18%,var(--base));
+  border-color:color-mix(in srgb,var(--blue) 46%,var(--border));
+}
+#editSource .ui-icon{color:var(--blue)}
+#editSource:enabled:hover{
+  background:color-mix(in srgb,var(--focus) 28%,var(--base));
+  border-color:var(--blue);
+}
+#filePath{flex:1;overflow-wrap:anywhere}#sourceStatus{color:#e7b36a}
+#sourceEditor{flex:1;min-height:120px;width:100%;box-sizing:border-box;resize:none;border:0;outline:none;padding:12px 20px;background:#1e1f22;color:#dfe1e5;font:14px/23px "JetBrains Mono",Consolas,monospace;tab-size:4;white-space:pre;overflow:auto}
+#sourceView{min-height:0}#palette h3{font-size:12px;color:#aeb4bf;padding:10px 12px 4px;margin:0}
+
+#sourceView:not([hidden]){display:flex;flex-direction:column}#sourceView>.source-meta,#findingReview{flex:none}#sourceScroll{flex:1;min-height:0}#sourceEditor{min-height:0}

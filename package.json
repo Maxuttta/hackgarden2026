@@ -6,9 +6,10 @@
   "main": "garden/main.cjs",
   "scripts": {
     "start": "electron .",
+    "setup:ai": "node scripts/setup-local-qwen.cjs",
     "dist": "electron-builder --win nsis --x64",
     "smoke": "node scripts/garden-smoke.cjs",
-    "test": "node --test garden/test.cjs garden/github.test.cjs garden/reports.test.cjs",
+    "test": "node --test garden/reveal-file.test.cjs garden/source-drafts.test.cjs garden/workspace-store.test.cjs garden/source-edit.test.cjs garden/custom.test.cjs garden/test.cjs garden/github.test.cjs garden/reports.test.cjs",
     "smoke:reports": "node scripts/report-smoke.cjs",
     "smoke:mobile": "node scripts/mobile-smoke.cjs",
     "check": "node garden/cli.cjs"
@@ -22,6 +23,7 @@
     "appId": "org.cybergarden.workflow",
     "productName": "Cyber Garden",
     "asar": true,
+    "asarUnpack": ["garden/select-in-explorer.vbs"],
     "files": [
       "garden/**/*",
       "package.json",

@@ -40,7 +40,7 @@
     <div class="zoom" aria-label="Масштаб холста"><button id="zoomOut" aria-label="Уменьшить масштаб"><i data-icon="minus"></i></button><output id="zoomValue"></output><button id="zoomIn" aria-label="Увеличить масштаб"><i data-icon="plus"></i></button><button id="fit" aria-label="Показать всю схему" title="Показать всю схему"><i data-icon="fit"></i></button></div>
   </div>
 
- <div id="sourceView" hidden aria-label="Просмотр исходника"><div class="source-meta"><i data-icon="fileCode"></i><span id="filePath"></span></div><div id="findingReview" hidden></div><div id="sourceScroll" tabindex="0"><div id="sourceLines"></div></div></div>
+ <div id="sourceView" hidden aria-label="Просмотр исходника"><div class="source-meta"><i data-icon="fileCode"></i><span id="filePath"></span><button id="editSource"><i data-icon="pencil" aria-hidden="true"></i>Редактировать</button><button id="saveSource" hidden>Сохранить · Ctrl+S</button><button id="cancelSource" hidden>Отменить</button><small id="sourceStatus" role="status"></small></div><div id="findingReview" hidden></div><textarea id="sourceEditor" aria-label="Редактор исходного кода" spellcheck="false" wrap="off" hidden></textarea><div id="sourceScroll" tabindex="0"><div id="sourceLines"></div></div></div>
    <section class="dock" aria-label="Результаты проверки">
     <div class="tabs"><button id="latest" class="active"><i data-icon="terminal"></i>Отчёт <span id="resultCount" hidden></span></button><button id="history"><i data-icon="clock"></i>История</button></div>
     <div id="report"></div>
@@ -51,12 +51,12 @@
  <h2 class="panel-title">Блоки сценария</h2>
  <div class="library">
    <label class="search"><i data-icon="search"></i><input id="blockSearch" type="search" aria-label="Поиск блоков" placeholder="Найти блок"><kbd>Ctrl K</kbd></label>
-   <div id="palette"></div><p id="noMatches" hidden>Таких блоков нет. Попробуйте другое название.</p>
+   <button id="createCustomBlock" title="Создать собственное правило проверки">+ Создать блок</button><div id="palette"></div><p id="noMatches" hidden>Таких блоков нет. Попробуйте другое название.</p>
  </div>
 </aside>
 <nav class="rail rail-right" aria-label="Инструменты сценария"><button id="blockToggle" aria-label="Библиотека блоков" title="Библиотека блоков"><i data-icon="blocks"></i></button><button id="searchShortcut" aria-label="Найти блок" title="Найти блок (Ctrl+K)"><i data-icon="search"></i></button></nav>
 </main>
 <footer><span id="crumb"></span><span id="hint" role="status">Готово к запуску</span></footer>
 <dialog id="modal" aria-labelledby="dialogTitle"><form method="dialog"><button class="close" aria-label="Закрыть" title="Закрыть (Esc)">×</button></form><div id="form"></div></dialog>
-<script src="icons.js"></script><script src="ui.js"></script>
+<script src="block-presets.js"></script><script src="icons.js"></script><script src="ui.js"></script>
 <script src="workbench.js"></script></body></html>

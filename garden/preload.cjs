@@ -1,8 +1,11 @@
 const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('garden',{
+  projectInfo:()=>ipcRenderer.invoke('garden:projectInfo'),
   files:()=>ipcRenderer.invoke('garden:files'),
+  saveSource:input=>ipcRenderer.invoke('garden:saveSource',input),
   source:file=>ipcRenderer.invoke('garden:source',file),
   reveal:file=>ipcRenderer.invoke('garden:reveal',file),
+  fileMenu:file=>ipcRenderer.invoke('garden:fileMenu',file),
   library:(a,i)=>ipcRenderer.invoke('garden:library',a,i),
   generate:p=>ipcRenderer.invoke('garden:generate',p),
   run:g=>ipcRenderer.invoke('garden:run',g),

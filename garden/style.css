@@ -8,3 +8,6 @@ main{min-height:0;display:grid;grid-template-columns:clamp(218px,19vw,270px) min
 @media(max-width:1020px){.workspace{display:none}.divider{display:none}main{grid-template-columns:214px minmax(0,1fr)}.library,.source{padding:13px}.graphbar{padding:0 10px}.graph-title{gap:7px}.filetools{padding:0 5px}.filetools button{padding:4px 6px}}
 @media(max-height:720px){.source,.library{padding-top:10px;padding-bottom:10px}.palette-group{margin-top:7px}#palette button{padding-top:3px;padding-bottom:3px}.editor{grid-template-rows:37px 42px minmax(160px,1fr) 145px}.tabstrip{height:37px}.zoom{bottom:8px}}
 #redo .ui-icon{transform:scaleX(-1)}.filetools button:disabled{opacity:.35;cursor:default}
+
+#createCustomBlock{margin:8px 12px;min-height:34px;width:calc(100% - 24px)}
+#customFix{min-height:90px;width:100%;box-sizing:border-box}#customCase{width:auto}

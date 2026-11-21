@@ -2,6 +2,18 @@ const bench=$('workbench');
 const narrow=matchMedia('(max-width:1099px)');
 const panes={project:!read('garden.hideProject',false),blocks:!narrow.matches&&!read('garden.hideBlocks',false),report:false};
 const tabFiles=new Map();
+const sourceDrafts=new Map(),editingFiles=new Set();let savingSource=false,restoringSources=true,draftProjectId='demo';
+async function showFileMenu(event,file){
+ event.preventDefault();event.stopPropagation();
+ try{await garden.fileMenu(file);}catch{note('Файл недоступен. Переоткройте проект.');}
+}
+// Native file menu is shared by the project tree, source tabs and file header.
+$('tree').addEventListener('contextmenu',event=>{
+ const row=event.target.closest('button[data-file]');if(row)showFileMenu(event,row.dataset.file);
+});
+for(const id of ['filePath','sourceScroll'])$(id).addEventListener('contextmenu',event=>{
+ if(activeFile)showFileMenu(event,activeFile);
+});
 let activeFile=null,sourceRows=[],projectGeneration=0,requestNumber=0,lastWindow='',chosenLine=0;
 let review=null,hasProjectFolder=false,importing=false;
 function hideFirstCheck(){
@@ -44,15 +56,17 @@ function syncTabs(){
  $('openTabs').replaceChildren();
  for(const file of tabFiles.keys()){
    const group=document.createElement('span');group.className='source-tab'+(file===activeFile?' current':'');
+   group.oncontextmenu=event=>showFileMenu(event,file);
    const open=document.createElement('button');open.innerHTML=iconSvg('fileCode')+esc(file.split('/').at(-1));open.title=file;
    open.onclick=()=>openFile(file);group.append(open);
    const close=document.createElement('button');close.textContent='×';close.title='Закрыть '+file;close.setAttribute('aria-label',close.title);
-   close.onclick=()=>{tabFiles.delete(file);if(activeFile===file)showGraph();else syncTabs();};
+   close.onclick=()=>{if(sourceDrafts.has(file)&&!confirm('Отменить несохранённые изменения в '+file+'?'))return;sourceDrafts.delete(file);editingFiles.delete(file);persistSourceDrafts();tabFiles.delete(file);if(activeFile===file)showGraph();else syncTabs();};
    group.append(close);$('openTabs').append(group);
  }
  for(const row of $('tree').querySelectorAll('button'))row.classList.toggle('current',activeFile?row.dataset.file===activeFile:row.classList.contains('workflow-row'));
  $('crumb').textContent=$('project').textContent+'　›　'+(activeFile?activeFile.split('/').join('　›　'):'Сценарий проверки');
  $('crumb').title=activeFile||'Сценарий проверки';
+ syncSourceEditor();
 }
 function showGraph(){requestNumber++;review=null;activeFile=null;sourceRows=[];syncTabs();}
 $('workflowTab').onclick=showGraph;$('workflowShortcut').onclick=showGraph;
@@ -83,7 +97,9 @@ async function openFile(file,line=0,context=null){
  try{
    const source=tabFiles.has(file)?tabFiles.get(file):await garden.source(file);
    if(request!==requestNumber)return;
-   tabFiles.set(file,source);activeFile=file;sourceRows=source.split(/\r\n|\n|\r/);chosenLine=line;review=context;
+   tabFiles.set(file,source);activeFile=file;
+   try{localStorage.setItem('garden.lastSource.'+draftProjectId,file);}catch{}
+   sourceRows=source.split(/\r\n|\n|\r/);chosenLine=line;review=context;
    if(review)renderReview();
    syncTabs();$('filePath').textContent=file;$('sourceLines').style.height=sourceRows.length*23+'px';lastWindow='';
    $('sourceScroll').scrollTo(0,Math.max(0,(line-4)*23));renderLines();
@@ -116,10 +132,13 @@ function branch(title){
  return {box,children};
 }
 async function loadTree(){
- const generation=++projectGeneration;
- tabFiles.clear();showGraph();$('tree').replaceChildren();
+ const generation=++projectGeneration;restoringSources=true;
+ sourceDrafts.clear();editingFiles.clear();tabFiles.clear();showGraph();$('tree').replaceChildren();
  try{
-   const list=await garden.files();if(generation!==projectGeneration)return;
+   const [list,info]=await Promise.all([garden.files(),garden.projectInfo()]);if(generation!==projectGeneration)return;
+   draftProjectId=info.id;$('project').textContent=info.name;hasProjectFolder=info.local;
+   $('filecount').textContent=list.length+' '+plural(list.length,['файл','файла','файлов']);
+   if(info.warning)note(info.warning);
    const root=branch($('project').textContent);$('tree').append(root.box);
    const pathTree={dirs:new Map(),files:[]};
    for(const file of list){
@@ -142,10 +161,83 @@ async function loadTree(){
    }
    fill(pathTree,root.children,0);
    const workflow=document.createElement('button');workflow.className='tree-file workflow-row';workflow.innerHTML='<span class="file-icon">'+iconSvg('git')+'</span>Сценарий проверки';workflow.onclick=showGraph;root.children.append(workflow);
-   syncTabs();
- }catch{note('Не удалось загрузить список файлов проекта.');}
+   syncTabs();await restoreSourceDrafts(list,generation);
+ }catch{note('Не удалось загрузить список файлов проекта.');}finally{if(generation===projectGeneration)restoringSources=false;}
 }
 $('actionMenu').addEventListener('click',e=>{if(e.target.closest('button'))$('actionMenu').open=false;});
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#actionMenu'))$('actionMenu').open=false;});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('actionMenu').open){$('actionMenu').open=false;$('actionMenu').querySelector('summary').focus();}});
 displayPanes();loadTree();
+
+function hasUnsavedSources(){return sourceDrafts.size>0||savingSource||restoringSources;}
+function confirmDiscardSources(){return !hasUnsavedSources()||(!savingSource&&confirm('Несохранённый код останется в черновике текущего проекта. Переключиться на другой проект?'));}
+function syncSourceEditor(){
+ const editing=!!activeFile&&editingFiles.has(activeFile);
+ $('sourceEditor').hidden=!editing;$('sourceScroll').hidden=editing;
+ $('editSource').hidden=editing;$('saveSource').hidden=!editing;$('cancelSource').hidden=!editing;
+ $('editSource').disabled=busy||savingSource;
+ $('saveSource').disabled=busy||savingSource||!sourceDrafts.has(activeFile);
+ $('cancelSource').disabled=savingSource;
+ $('sourceEditor').readOnly=busy||savingSource;
+ $('sourceStatus').textContent=sourceDrafts.has(activeFile)?'Есть несохранённые изменения':'';
+ if(editing)$('sourceEditor').value=sourceDrafts.get(activeFile)??tabFiles.get(activeFile)??'';
+}
+$('editSource').onclick=()=>{
+ if(!activeFile||busy||savingSource)return;
+ editingFiles.add(activeFile);syncSourceEditor();$('sourceEditor').focus();
+};
+$('sourceEditor').oninput=()=>{
+ if(!activeFile||savingSource)return;
+ const source=$('sourceEditor').value;
+ if(source===(tabFiles.get(activeFile)||'').replace(/\r\n/g,'\n'))sourceDrafts.delete(activeFile);else sourceDrafts.set(activeFile,source);
+ persistSourceDrafts();
+ $('saveSource').disabled=!sourceDrafts.has(activeFile);$('sourceStatus').textContent=sourceDrafts.has(activeFile)?'Есть несохранённые изменения':'';
+};
+$('sourceEditor').onkeydown=e=>{
+ if(e.key==='Tab'&&!e.ctrlKey&&!e.altKey){e.preventDefault();const field=e.target;field.setRangeText('    ',field.selectionStart,field.selectionEnd,'end');field.dispatchEvent(new Event('input'));}
+};
+async function saveCurrentSource(){
+ if(!activeFile||busy||savingSource||!sourceDrafts.has(activeFile))return;
+ const file=activeFile,expected=tabFiles.get(file),source=sourceDrafts.get(file).replace(/\r?\n/g,expected.includes('\r\n')?'\r\n':'\n');
+ savingSource=true;syncSourceEditor();
+ try{
+   const result=await garden.saveSource({file,source,expected});
+   tabFiles.set(file,result.source);sourceDrafts.delete(file);editingFiles.delete(file);persistSourceDrafts();
+   projectGeneration++;review=null;
+   if(activeFile===file)await openFile(file);
+   note(result.savedToDisk?'Файл сохранён на диске. Запустите проверку заново.':'Изменения сохранены в приложении и восстановятся после перезапуска. Репозиторий GitHub не изменён.');
+ }catch(e){note(e.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/,''));}
+ finally{savingSource=false;syncSourceEditor();}
+}
+$('saveSource').onclick=saveCurrentSource;
+$('cancelSource').onclick=()=>{
+ if(!activeFile||savingSource)return;
+ if(sourceDrafts.has(activeFile)&&!confirm('Отменить изменения в этом файле?'))return;
+ sourceDrafts.delete(activeFile);editingFiles.delete(activeFile);persistSourceDrafts();syncSourceEditor();
+};
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.code==='KeyS'&&activeFile){e.preventDefault();saveCurrentSource();}});
+window.addEventListener('beforeunload',e=>{if(savingSource||!persistSourceDrafts()){e.preventDefault();e.returnValue='';}});
+
+function persistSourceDrafts(){
+ if(restoringSources)return true;
+ try{
+   const rows=[...sourceDrafts].map(([file,source])=>({file,source,expected:tabFiles.get(file)}));
+   if(rows.length)localStorage.setItem('garden.sourceDrafts.'+draftProjectId,JSON.stringify(rows));
+   else localStorage.removeItem('garden.sourceDrafts.'+draftProjectId);
+   return true;
+ }catch{note('Не удалось сохранить черновик. Сохраните файл кнопкой «Сохранить» перед закрытием.');return false;}
+}
+async function restoreSourceDrafts(list,generation){
+ const rows=read('garden.sourceDrafts.'+draftProjectId,[]);
+ if(!Array.isArray(rows))return;
+ for(const row of rows){
+   if(!row||!list.includes(row.file)||typeof row.source!=='string'||typeof row.expected!=='string'||row.source.length>2000000)continue;
+   const current=await garden.source(row.file);
+   if(generation!==projectGeneration)return;
+   if(row.source===current)continue;
+   tabFiles.set(row.file,row.expected);sourceDrafts.set(row.file,row.source);editingFiles.add(row.file);
+ }
+ if(generation!==projectGeneration)return;
+ if(sourceDrafts.size){await openFile(sourceDrafts.keys().next().value);note('Восстановлен несохранённый код. Ctrl+S — сохранить изменения.');}
+ else{const last=localStorage.getItem('garden.lastSource.'+draftProjectId);if(list.includes(last))await openFile(last);}
+}

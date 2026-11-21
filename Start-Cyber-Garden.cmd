@@ -9,4 +9,4 @@ if not exist "node_modules\electron\dist\electron.exe" (
     exit /b 1
   )
 )
-start "Cyber Garden" "%~dp0node_modules\electron\dist\electron.exe" "%~dp0."
+wscript.exe "%~dp0Start-Cyber-Garden.vbs"
