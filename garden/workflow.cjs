@@ -48,7 +48,7 @@ async function execute(graph,files,catalog,services,status=()=>{}){
         for(const f of rows) merged.set(key(f),{...merged.get(key(f)),...f});
         inputs.set(e.to,[...merged.values()]);
       }
-      log.push({id:n.id,state:'Готово',detail});
+      log.push({id:n.id,state:'Готово',detail,count:rows.length});
     }catch(err){log.push({id:n.id,state:'Ошибка',detail:err.message});status(log.at(-1));break;}
     status(log.at(-1));
   }

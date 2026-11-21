@@ -352,6 +352,7 @@ function edit(n){
  };
 }
 const runProjects=new WeakMap();
+const reportSending=new WeakSet();
 const riskLabels={critical:'Критический',high:'Высокий',medium:'Средний',low:'Низкий',info:'Информация'};
 function activeTab(id){
  for(const name of ['latest','history']){
@@ -377,6 +378,22 @@ function report(r){
  (delivered?'<div class="delivery">'+iconSvg('circleCheck')+esc(delivered.detail)+'</div>':'')+log+
  findings.map((f,i)=>'<details class="finding" '+(i===0?'open':'')+'><summary><span class="severity '+esc(f.severity)+'">'+esc(riskLabels[f.severity]||f.severity)+'</span><b>'+esc(f.title)+'</b><code>'+esc(f.file)+':'+esc(f.line)+'</code></summary><p>'+esc(f.fix)+' '+esc(f.reference)+'</p>'+(f.advice?'<p><b>AI</b>　'+esc(f.advice)+'</p>':'')+'</details>').join('')+
  (!findings.length&&r.ok?'<p>По выбранным правилам находок нет.</p>':'');
+ const actions=document.createElement('div');actions.className='report-send';
+ const sendButton=document.createElement('button');sendButton.id='sendTelegram';sendButton.innerHTML=iconSvg('send')+'Отправить в Telegram';sendButton.disabled=reportSending.has(r);
+ const feedback=document.createElement('small');feedback.id='sendTelegramStatus';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');
+ actions.append(sendButton,feedback);$('report').querySelector('.report-head').after(actions);
+ sendButton.onclick=async()=>{
+   if(reportSending.has(r))return;
+   reportSending.add(r);sendButton.disabled=true;feedback.textContent='Отправляем отчёт…';
+   try{
+     const account=await garden.reportAccount();
+     if(!account.loggedIn){feedback.textContent='Войдите в аккаунт, затем нажмите отправку ещё раз.';await openReportAccount();return;}
+     const result=await garden.sendReport(r);
+     feedback.textContent='Отчёт сохранён и поставлен в очередь Telegram. Доставка обычно занимает до 15 секунд.';
+     feedback.title='Отчёт '+result.id;note('Отчёт передан серверу для отправки PDF в Telegram.');
+   }catch(error){feedback.textContent=connectionError(error);}
+   finally{reportSending.delete(r);sendButton.disabled=false;}
+ };
  if(live){
    if($('inspectFirst'))$('inspectFirst').onclick=()=>inspectFinding(r,findings,0);
    $('report').querySelectorAll('.finding code').forEach((code,index)=>{
@@ -480,7 +497,9 @@ async function openConnections(fromGenerator=false){
    '<small id="modelHint" role="status"></small><div id="keyPanel"><label>API-ключ<input id="key" type="password" autocomplete="new-password"></label>'+
    '<label id="clearLabel"><input type="checkbox" id="clearKey"> Удалить сохранённый ключ</label></div></div>'+
    '<hr><label>Куда отправлять отчёт<select id="delivery"><option value="local">На этот компьютер</option><option value="webhook">На адрес команды (webhook)</option></select></label>'+
-   '<label id="hookPanel">Адрес webhook<input id="hook" type="password" autocomplete="new-password"></label><small id="deliveryHint"></small>'+
+   '<div id="hookPanel"><label>Адрес webhook<input id="hook" type="password" autocomplete="new-password"></label>'+
+   '<label>Токен сессии сервера отчётов (если требуется)<input id="hookKey" type="password" autocomplete="new-password"></label>'+
+   '<label><input id="clearHookKey" type="checkbox"> Удалить сохранённый токен webhook</label></div><small id="deliveryHint"></small>'+
    '<p id="connectionFeedback" role="alert"></p><button id="apply">Сохранить</button>'+
    (fromGenerator?'<button id="backToPrompt">К описанию</button>':''));
  const provider=$('provider'),model=$('model'),endpoint=$('endpoint'),key=$('key'),hook=$('hook'),delivery=$('delivery'),feedback=$('connectionFeedback');
@@ -512,6 +531,7 @@ async function openConnections(fromGenerator=false){
  }
  function updateDelivery(){
    $('hookPanel').hidden=delivery.value==='local';hook.placeholder=c.hasHook?'Адрес сохранён':'https://…';
+   $('hookKey').placeholder=c.hasHookKey?'Токен сохранён':'Токен из локального сервера отчётов';
    $('deliveryHint').textContent=delivery.value==='local'?'Встроенный HTTP-приёмник сохранит отчёт на этом компьютере.':'Блок HTTP webhook отправит JSON-отчёт на этот адрес.';
  }
  model.value=c.model;updateProvider();updateDelivery();updateKey();
@@ -526,13 +546,47 @@ async function openConnections(fromGenerator=false){
    try{
      await garden.configure({model:provider.value==='rules'?'':model.value.trim(),endpoint:provider.value==='local'?localModelEndpoint:provider.value==='api'?endpoint.value.trim():c.endpoint,
        key:provider.value==='api'?key.value.trim():'',clearKey:provider.value==='api'&&$('clearKey').checked,
-       hook:hook.value.trim(),localDelivery:delivery.value==='local'});
+       hook:hook.value.trim(),hookKey:$('hookKey').value.trim(),clearHookKey:$('clearHookKey').checked,localDelivery:delivery.value==='local'});
      if(!button.isConnected||!$('modal').open)return;
      if(fromGenerator)await openGenerator();else $('modal').close();note('Подключения сохранены.');
    }catch(e){feedback.textContent=connectionError(e);}finally{button.disabled=false;}
  };
 }
 $('settings').onclick=()=>openConnections();
+
+async function openReportAccount(){
+ modal('<h2>Отчёты в Telegram</h2><p>Войдите в аккаунт локального сервера. После проверки нажмите «Отправить в Telegram» в отчёте.</p>'+
+ '<p id="reportAccountStatus" role="status">Проверяем подключение…</p><div id="reportLoginPanel" hidden>'+
+ '<form id="reportLoginForm"><label>Сервер<input id="reportServer" type="url" required value="http://127.0.0.1:8787"></label>'+
+ '<label>Логин<input id="reportLogin" autocomplete="username" required></label><label>Пароль<input id="reportPassword" type="password" autocomplete="current-password" required></label>'+
+ '<button type="submit" id="reportSignIn">Войти</button></form></div>'+
+ '<div id="reportConnectedPanel" hidden><p id="reportTelegramState"></p><div class="report-account-actions"><button id="reportPair">Получить код для бота</button><button id="reportRefresh">Обновить статус</button><button id="reportSignOut">Выйти</button></div>'+
+ '<pre id="reportPairCode" hidden></pre></div><p id="reportAccountError" role="alert"></p>');
+ const root=$('reportAccountStatus');
+ async function refresh(){
+   const account=await garden.reportAccount();if(!root.isConnected)return;
+   $('reportAccountStatus').textContent=account.loggedIn?'Аккаунт: '+account.login+(account.expires?' · вход до '+new Date(account.expires).toLocaleString():''):account.expired?'Сессия истекла. Войдите снова.':'Войдите в аккаунт сервера отчётов.';
+   $('reportLoginPanel').hidden=account.loggedIn;$('reportConnectedPanel').hidden=!account.loggedIn;
+   $('reportServer').value=account.base;$('reportLogin').value=account.login;
+   if(account.loggedIn)$('reportTelegramState').textContent=account.telegramChats?'Telegram подключён. Активных чатов: '+account.telegramChats:'Telegram ещё не подключён. Получите код и отправьте команду своему боту.';
+ }
+ async function action(button,fn){
+   button.disabled=true;$('reportAccountError').textContent='';
+   try{await fn();}catch(error){if(root.isConnected)$('reportAccountError').textContent=connectionError(error);}finally{button.disabled=false;}
+ }
+ $('reportLoginForm').onsubmit=event=>{
+   event.preventDefault();const credentials={base:$('reportServer').value.trim(),login:$('reportLogin').value.trim(),password:$('reportPassword').value};$('reportPassword').value='';
+   action($('reportSignIn'),async()=>{await garden.reportLogin(credentials);await refresh();});
+ };
+ $('reportRefresh').onclick=()=>action($('reportRefresh'),refresh);
+ $('reportSignOut').onclick=()=>action($('reportSignOut'),async()=>{await garden.reportLogout();if(!root.isConnected)return;$('reportPairCode').textContent='';$('reportPairCode').hidden=true;await refresh();});
+ $('reportPair').onclick=()=>action($('reportPair'),async()=>{
+   const result=await garden.reportCode();if(!root.isConnected)return;
+   $('reportPairCode').textContent='/login '+result.code+'\nОтправьте команду своему боту в личном чате.\nКод действует до '+new Date(result.expires).toLocaleTimeString();$('reportPairCode').hidden=false;
+ });
+ try{await refresh();}catch(error){if(root.isConnected){$('reportAccountStatus').textContent='Не удалось подключиться к серверу';$('reportAccountError').textContent=connectionError(error);$('reportLoginPanel').hidden=false;}}
+}
+$('telegramAccount').onclick=()=>openReportAccount();
 $('saveGraph').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(graph,null,2)],{type:'application/json'}));a.download='workflow.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
 $('loadGraph').onclick=()=>{if(!busy)$('json').click();};$('json').onchange=async e=>{try{const g=JSON.parse(await e.target.files[0].text());if(!Array.isArray(g.nodes)||g.nodes.length>64||!Array.isArray(g.edges)||g.edges.length>256||g.nodes.some(n=>!Object.hasOwn(kinds,n.type)||typeof n.id!=='string'||!Number.isFinite(n.x)||!Number.isFinite(n.y))||g.edges.some(a=>!g.nodes.some(n=>n.id===a.from)||!g.nodes.some(n=>n.id===a.to)))throw Error('Некорректная схема');graph=g;armed=false;states={};pending=null;persist();draw();}catch(err){note(err.message);}e.target.value='';};
 setInterval(()=>{const now=new Date(),minute=now.toTimeString().slice(0,5),key=now.toDateString()+minute;if(armed&&lastMinute!==key&&graph.nodes.some(n=>n.type==='schedule'&&n.time===minute)){lastMinute=key;run();}},1000);
@@ -587,4 +641,33 @@ $('ci').onclick=()=>{
  'name: Kotlin security workflow','on: [push, pull_request]','permissions:','  contents: read','jobs:','  scan:','    runs-on: ubuntu-latest','    steps:','      - uses: actions/checkout@v4','      - uses: actions/setup-node@v4','        with:','          node-version: 22','      - name: Check training project','        env:','          REPORT_WEBHOOK: ${{ secrets.REPORT_WEBHOOK }}','          LLM_ENDPOINT: ${{ vars.LLM_ENDPOINT }}','          LLM_MODEL: ${{ vars.LLM_MODEL }}','          LLM_KEY: ${{ secrets.LLM_KEY }}','        run: node garden/cli.cjs . workflow.json advisories.json > security-report.json','      - uses: actions/upload-artifact@v4','        if: always()','        with:','          name: security-report','          path: security-report.json'].join('\n');
  modal('<h2>GitHub Actions</h2><p>В учебный репозиторий поместите каталог garden, экспорт схемы workflow.json и справочник advisories.json. Для доставки добавьте секрет REPORT_WEBHOOK.</p><p>Сохраните файл задания в .github/workflows. Критическая находка остановит сборку.</p><button id="downloadCi">Скачать security.yml</button>');
  $('downloadCi').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([yaml]));a.download='security.yml';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
+};
+
+$('githubImport').onclick=()=>{
+ if(busy||importing)return;
+ modal('<h2>Импорт проекта из GitHub</h2><p>Используйте учебные репозитории, разрешённые для проверки. Загружаются исходники и конфигурации без выполнения кода.</p>'+
+ '<label>Ссылка на репозиторий<input id="githubUrl" type="url" placeholder="https://github.com/owner/repository" autocomplete="off"></label>'+
+ '<label>Ветка или коммит (необязательно)<input id="githubBranch" maxlength="200" placeholder="По умолчанию — основная ветка"></label>'+
+ '<label>Токен для приватного репозитория (необязательно)<input id="githubToken" type="password" autocomplete="off" maxlength="512"></label>'+
+ '<p><small>Токен отправляется только GitHub и не сохраняется. Вход в аккаунт браузера не используется. Импорт создаёт снимок проекта; для обновления повторите импорт.</small></p>'+
+ '<p id="githubStatus" role="status"></p><button id="githubSubmit">Импортировать</button>');
+ $('githubUrl').focus();
+ $('githubSubmit').onclick=async()=>{
+   if(busy||importing)return;
+   const button=$('githubSubmit'),status=$('githubStatus');
+   const options={url:$('githubUrl').value.trim(),branch:$('githubBranch').value.trim(),token:$('githubToken').value.trim()};
+   $('githubToken').value='';importing=true;$('run').disabled=true;button.disabled=true;
+   status.textContent='Загрузка проекта из GitHub…';
+   try{
+     const imported=await garden.importGithub(options);
+     hasProjectFolder=false;hideFirstCheck();$('project').textContent=imported.name;
+     $('filecount').textContent=imported.count+' '+plural(imported.count,['файл','файла','файлов']);
+     await loadTree();showGraph();showPane('project',true);showPane('report',false);
+     if(button.isConnected)$('modal').close();
+     note('Импортирован '+imported.name+' · '+imported.commit.slice(0,7)+'. Нажмите «Запустить».');
+   }catch(e){
+     const message=e.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/,'');
+     status.textContent=message;note(message);
+   }finally{options.token='';importing=false;$('run').disabled=false;button.disabled=false;}
+ };
 };

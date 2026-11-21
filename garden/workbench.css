@@ -25,6 +25,7 @@ header button,header summary{height:29px;padding:3px 7px;border-radius:5px;font-
 #project{display:inline-block;max-width:28vw;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;font-size:13px;font-weight:450;color:#e0dce7}
 #folder{gap:6px}#folder i{color:#bdb4c2}#folder .ui-icon{width:13px}
 .app-title{font-size:13px;color:#c3bfc9}.header-actions{gap:6px}.runcontrol{color:#bdd3bf}.runcontrol i{color:#58b675}.runcontrol .ui-icon{fill:transparent}.header-actions #settings{color:#c1c3cb}
+.report-send{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0 14px}.report-send button{border:1px solid #51715a;color:#b9d9c0}.report-send small{white-space:normal;flex:1;min-width:180px}.report-account-actions{display:flex;gap:8px;flex-wrap:wrap}#reportPairCode{white-space:pre-wrap;overflow-wrap:anywhere;background:#202523;border:1px solid #47604c;border-radius:6px;padding:12px;margin-top:12px;color:#bdd6bf}#reportAccountError{color:#f09d9d;margin-top:10px}#reportAccountStatus,#reportTelegramState{margin:12px 0}
 .action-menu{position:relative;z-index:7}.action-menu summary{display:flex;align-items:center;justify-content:center;list-style:none;color:#c8c3cf}
 .action-menu summary:hover,header button:hover{background:#ffffff14}
 .filetools{position:absolute;top:34px;left:0;display:grid;width:168px;padding:5px;border-radius:7px;background:#2b2d31;border:1px solid #44464c;box-shadow:0 5px 18px #0006}

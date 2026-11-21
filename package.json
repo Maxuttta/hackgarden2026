@@ -8,7 +8,9 @@
     "start": "electron .",
     "dist": "electron-builder --win nsis --x64",
     "smoke": "node scripts/garden-smoke.cjs",
-    "test": "node --test garden/test.cjs",
+    "test": "node --test garden/test.cjs garden/github.test.cjs garden/reports.test.cjs",
+    "smoke:reports": "node scripts/report-smoke.cjs",
+    "smoke:mobile": "node scripts/mobile-smoke.cjs",
     "check": "node garden/cli.cjs"
   },
   "devDependencies": {

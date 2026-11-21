@@ -33,6 +33,15 @@ app.whenReady().then(async()=>{
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const localHook='http://127.0.0.1:'+server.address().port+'/'+secret;
+  const reportClient=new (require('./reports.cjs').ReportClient)(()=>cfg.reportAccount,async account=>{
+    const next={...cfg,reportAccount:account};
+    await fs.writeFile(store(),safeStorage.encryptString(JSON.stringify(next)));cfg=next;
+  });
+  ipcMain.handle('garden:reportAccount',()=>reportClient.status());
+  ipcMain.handle('garden:reportLogin',(_,credentials)=>reportClient.login(credentials));
+  ipcMain.handle('garden:reportLogout',()=>reportClient.logout());
+  ipcMain.handle('garden:reportCode',()=>reportClient.code());
+  ipcMain.handle('garden:sendReport',(_,report)=>reportClient.send(report));
   Menu.setApplicationMenu(null);
   const win=new BrowserWindow({
     width:1440,height:940,minWidth:890,minHeight:600,backgroundColor:'#1e1f22',
@@ -67,23 +76,36 @@ app.whenReady().then(async()=>{
     return {items,library};
   });
   ipcMain.handle('garden:generate',(_,prompt)=>require('./model.cjs').generate(require('./services.cjs').post,cfg,prompt));
-  ipcMain.handle('garden:settings',()=>({model:cfg.model,endpoint:cfg.endpoint,hasHook:!!cfg.hook,hasKey:!!cfg.key}));
+  ipcMain.handle('garden:settings',()=>({model:cfg.model,endpoint:cfg.endpoint,hasHook:!!cfg.hook,hasKey:!!cfg.key,hasHookKey:!!cfg.hookKey}));
   ipcMain.handle('garden:localModels',localModels);
   ipcMain.handle('garden:configure',async(_,v)=>{
     const target=endpoint(v.endpoint).href;
     const keepKey=!v.reset&&!v.clearKey&&cfg.endpoint===target;
+    const nextHook=v.reset||v.localDelivery?'':v.hook?endpoint(v.hook).href:cfg.hook;
     const next={...cfg,model:v.model.trim(),endpoint:target,
-      hook:v.reset||v.localDelivery?'':v.hook?endpoint(v.hook).href:cfg.hook,
+      hook:nextHook,
+      hookKey:v.reset||v.localDelivery||v.clearHookKey?'':v.hookKey||(nextHook===cfg.hook?cfg.hookKey:''),
       key:v.reset?'':v.key||(keepKey?cfg.key:'')};
     await fs.writeFile(store(),safeStorage.encryptString(JSON.stringify(next)));cfg=next;
   });
   ipcMain.handle('garden:import',async(_,kind)=>{
+    if(busy||githubImporting)throw Error('Дождитесь окончания текущей операции');
     const result=await dialog.showOpenDialog(win,kind==='catalog'?{properties:['openFile'],filters:[{name:'Справочник',extensions:['json']}]}:{properties:['openDirectory']});
     if(result.canceled)return null;
     const p=result.filePaths[0];
     if(kind==='catalog')catalog=validateCatalog(JSON.parse(await fs.readFile(p,'utf8')));
     else {files=await readProject(p);projectFolder=p;}
     return {name:path.basename(p),count:kind==='catalog'?catalog.length:Object.keys(files).length};
+  });
+  let githubImporting=false;
+  ipcMain.handle('garden:github',async(_,options)=>{
+    if(busy||githubImporting)throw Error('Дождитесь окончания текущей операции');
+    githubImporting=true;
+    try{
+      const imported=await require('./github.cjs').importGithub(options);
+      files=imported.files;projectFolder=null;
+      return {name:imported.name,count:Object.keys(files).length,commit:imported.commit};
+    }finally{githubImporting=false;}
   });
   ipcMain.handle('garden:files',()=>Object.keys(files).sort());
   ipcMain.handle('garden:source',(_,file)=>{
@@ -97,7 +119,7 @@ app.whenReady().then(async()=>{
     shell.showItemInFolder(target);
   });
   ipcMain.handle('garden:run',async(_,graph)=>{
-    if(busy)throw Error('Проверка уже выполняется');busy=true;
+    if(busy||githubImporting)throw Error('Дождитесь окончания текущей операции');busy=true;
     try{
       let changed=false,latest=files;
       if(projectFolder){

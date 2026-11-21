@@ -24,3 +24,15 @@ test('HTTP-доставка и отклонение неподтверждённ
  const result=await s.explain(rows);assert.equal(result.rows[0].advice,undefined);assert.match(result.detail,/отклонён/);
  }finally{server.close();}
 });
+
+test('Webhook использует отдельный токен сессии и не отправляет его локальному приёмнику',async()=>{
+ const authorizations=[];
+ const server=http.createServer((req,res)=>{authorizations.push(req.headers.authorization);req.resume();res.end('{}');});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ try{
+   const url='http://127.0.0.1:'+server.address().port;
+   await services({hook:url,hookKey:'session-token',key:'model-secret'}).notify([]);
+   await services({hookKey:'session-token',key:'model-secret'},url).notify([]);
+   assert.deepEqual(authorizations,['Bearer session-token',undefined]);
+ }finally{server.close();}
+});

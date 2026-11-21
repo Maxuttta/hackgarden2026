@@ -28,7 +28,7 @@ function services(cfg,localHook){
       }catch{return {rows,detail:'Ответ модели недоступен или отклонён · рекомендации правил'};}
     },
     async notify(rows){
-      await post(cfg.hook||localHook,{event:'security.report',time:new Date().toISOString(),count:rows.length,findings:rows},null,10000);
+      await post(cfg.hook||localHook,{event:'security.report',time:new Date().toISOString(),count:rows.length,findings:rows},cfg.hook?cfg.hookKey:null,10000);
       return cfg.hook?'Webhook доставлен':'Доставлено в локальный HTTP-приёмник';
     }
   };

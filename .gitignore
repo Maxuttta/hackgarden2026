@@ -42,3 +42,12 @@ desktop.ini
 tmp/
 temp/
 *.tmp
+mobile/.toolchain/
+mobile/build/
+mobile/output/
+
+# Python caches and signing keys
+__pycache__/
+*.pyc
+*.keystore
+*.jks
