@@ -40,13 +40,13 @@ class ReportClient{
   await this.save({...account,token:''});
  }
  code(){return this.request(this.load()||{},'/api/telegram/code',{method:'POST'});}
- async send(report){
+ async send(report,{includeJson=false}={}){
   const account={...this.load()};
   const me=await this.request(account,'/api/me');
   if(!me.sessions.some(s=>s.kind==='telegram'))throw Error('Сначала подключите Telegram: откройте «Telegram» и получите код входа для бота.');
   if(!report||!Array.isArray(report.findings))throw Error('Сначала выполните проверку');
   const title='Cyber Garden · '+String(report.project||'Проверка проекта').slice(0,150);
-  return this.request(account,'/api/reports',{method:'POST',body:{title,findings:report.findings}});
+  return this.request(account,'/api/reports',{method:'POST',body:{title,findings:report.findings,...(includeJson?{includeJson:true}:{})}});
  }
 }
 module.exports={ReportClient,serverUrl};

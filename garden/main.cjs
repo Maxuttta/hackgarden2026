@@ -1,6 +1,7 @@
 const {app,BrowserWindow,dialog,ipcMain,safeStorage,Menu,shell}=require('electron');
 const fs=require('node:fs/promises'),path=require('node:path'),http=require('node:http'),crypto=require('node:crypto');
 const {execute}=require('./workflow.cjs'),{services,endpoint}=require('./services.cjs'),{demoFiles,demoCatalog,validateCatalog}=require('./scanners.cjs'),{readProject}=require('./io.cjs');
+const {resolveCatalog,isDemoCatalog}=require('./catalog.cjs');
 const profile=process.argv.find(a=>a.startsWith('--profile-dir='));
 if(profile) app.setPath('userData',path.resolve(profile.slice(14)));
 if(!profile){
@@ -9,9 +10,12 @@ if(!profile){
 }
 let files=demoFiles,catalog=demoCatalog,cfg={endpoint:'http://127.0.0.1:11434/api/chat',model:'',hook:'',key:''},busy=false,server;
 const store=()=>path.join(app.getPath('userData'),'connections.bin');
-let projectFolder=null,sourceSaving=false,projectName='Учебный Kotlin-проект',projectId='demo',workspaceStore,restoreWarning='';
-function workspaceState(){return {id:projectId,name:projectName,folder:projectFolder,files,catalog};}
-async function installWorkspace(state){await workspaceStore.save(state);files=state.files;catalog=state.catalog;projectFolder=state.folder;projectName=state.name;projectId=state.id;}
+let projectFolder=null,sourceSaving=false,projectName='Учебный Kotlin-проект',projectId='demo',workspaceStore,restoreWarning='',catalogName=null;
+function catalogInfo(){return {name:catalogName??(projectId==='demo'?'Учебный':'Встроенный Maven'),count:catalog.length};}
+function workspaceState(){return {id:projectId,name:projectName,folder:projectFolder,files,catalog,catalogName};}
+function applyWorkspace(state){files=state.files;catalog=state.catalog;catalogName=state.catalogName;projectFolder=state.folder;projectName=state.name;projectId=state.id;}
+async function installWorkspace(state){await workspaceStore.save(state);applyWorkspace(state);}
+function projectCatalog(){return catalogName?{catalog,catalogName}:{catalog:resolveCatalog(),catalogName:null};}
 const ollamaUrl='http://127.0.0.1:11434/api/chat';
 async function localModels(){
   const response=await fetch(new URL('/api/tags',ollamaUrl),{redirect:'error',signal:AbortSignal.timeout(1800)});
@@ -44,9 +48,10 @@ app.whenReady().then(async()=>{
   try{
     const saved=await workspaceStore.load();
     if(saved){
-      saved.catalog=validateCatalog(saved.catalog);
+      if(saved.catalogName===undefined)saved.catalogName=isDemoCatalog(saved.catalog)?null:'Импортированный SCA';
+      saved.catalog=resolveCatalog(saved.catalog,{demo:saved.id==='demo',custom:!!saved.catalogName});
       if(saved.folder){try{saved.files=await readProject(saved.folder);}catch{saved.folder=null;saved.name+=' (сохранённый снимок)';}}
-      files=saved.files;catalog=saved.catalog;projectName=saved.name;projectId=saved.id;projectFolder=saved.folder;
+      applyWorkspace(saved);
     }else await workspaceStore.save(workspaceState());
   }catch{restoreWarning='Не удалось восстановить последний проект. Предыдущее сохранение не изменено.';console.error(restoreWarning);}
   const secret=crypto.randomUUID();
@@ -69,7 +74,8 @@ app.whenReady().then(async()=>{
   ipcMain.handle('garden:reportLogin',(_,credentials)=>reportClient.login(credentials));
   ipcMain.handle('garden:reportLogout',()=>reportClient.logout());
   ipcMain.handle('garden:reportCode',()=>reportClient.code());
-  ipcMain.handle('garden:sendReport',(_,report)=>reportClient.send(report));
+  const sendTelegramReport=report=>reportClient.send(report,{includeJson:cfg.includeTelegramJson===true});
+  ipcMain.handle('garden:sendReport',(_,report)=>sendTelegramReport(report));
   Menu.setApplicationMenu(null);
   const win=new BrowserWindow({
     width:1440,height:940,minWidth:890,minHeight:600,backgroundColor:'#1e1f22',
@@ -104,7 +110,7 @@ app.whenReady().then(async()=>{
     return {items,library};
   });
   ipcMain.handle('garden:generate',(_,prompt)=>require('./model.cjs').generate(require('./services.cjs').post,cfg,prompt));
-  ipcMain.handle('garden:settings',()=>({model:cfg.model,endpoint:cfg.endpoint,hasHook:!!cfg.hook,hasKey:!!cfg.key,hasHookKey:!!cfg.hookKey,autoSendTelegram:cfg.autoSendTelegram===true}));
+  ipcMain.handle('garden:settings',()=>({model:cfg.model,endpoint:cfg.endpoint,hasHook:!!cfg.hook,hasKey:!!cfg.key,hasHookKey:!!cfg.hookKey,autoSendTelegram:cfg.autoSendTelegram===true,includeTelegramJson:cfg.includeTelegramJson===true}));
   ipcMain.handle('garden:localModels',localModels);
   ipcMain.handle('garden:configure',async(_,v)=>{
     const target=endpoint(v.endpoint).href;
@@ -112,6 +118,7 @@ app.whenReady().then(async()=>{
     const nextHook=v.reset||v.localDelivery?'':v.hook?endpoint(v.hook).href:cfg.hook;
     const next={...cfg,model:v.model.trim(),endpoint:target,
       autoSendTelegram:typeof v.autoSendTelegram==='boolean'?v.autoSendTelegram:cfg.autoSendTelegram===true,
+      includeTelegramJson:typeof v.includeTelegramJson==='boolean'?v.includeTelegramJson:cfg.includeTelegramJson===true,
       hook:nextHook,
       hookKey:v.reset||v.localDelivery||v.clearHookKey?'':v.hookKey||(nextHook===cfg.hook?cfg.hookKey:''),
       key:v.reset?'':v.key||(keepKey?cfg.key:'')};
@@ -122,8 +129,8 @@ app.whenReady().then(async()=>{
     const result=await dialog.showOpenDialog(win,kind==='catalog'?{properties:['openFile'],filters:[{name:'Справочник',extensions:['json']}]}:{properties:['openDirectory']});
     if(result.canceled)return null;
     const p=result.filePaths[0];
-    if(kind==='catalog')await installWorkspace({...workspaceState(),catalog:validateCatalog(JSON.parse(await fs.readFile(p,'utf8')))});
-    else await installWorkspace({id:crypto.randomUUID(),name:path.basename(p),folder:p,files:await readProject(p),catalog});
+    if(kind==='catalog')await installWorkspace({...workspaceState(),catalogName:path.basename(p),catalog:validateCatalog(JSON.parse(await fs.readFile(p,'utf8')))});
+    else await installWorkspace({id:crypto.randomUUID(),name:path.basename(p),folder:p,files:await readProject(p),...projectCatalog()});
     return {name:path.basename(p),count:kind==='catalog'?catalog.length:Object.keys(files).length};
   });
   let githubImporting=false;
@@ -132,11 +139,11 @@ app.whenReady().then(async()=>{
     githubImporting=true;
     try{
       const imported=await require('./github.cjs').importGithub(options);
-      await installWorkspace({id:crypto.randomUUID(),name:imported.name,folder:null,files:imported.files,catalog});
+      await installWorkspace({id:crypto.randomUUID(),name:imported.name,folder:null,files:imported.files,...projectCatalog()});
       return {name:imported.name,count:Object.keys(files).length,commit:imported.commit};
     }finally{githubImporting=false;}
   });
-  ipcMain.handle('garden:projectInfo',()=>({id:projectId,name:projectName,local:!!projectFolder,warning:restoreWarning}));
+  ipcMain.handle('garden:projectInfo',()=>({id:projectId,name:projectName,local:!!projectFolder,warning:restoreWarning,catalog:catalogInfo()}));
   ipcMain.handle('garden:files',()=>Object.keys(files).sort());
   ipcMain.handle('garden:source',(_,file)=>{
     if(typeof file!=='string'||!Object.hasOwn(files,file))throw Error('Файл отсутствует в текущем проекте');
@@ -187,8 +194,8 @@ app.whenReady().then(async()=>{
       if(result.ok&&cfg.autoSendTelegram===true){
         win.webContents.send('garden:status',{phase:'telegram'});
         try{
-          const queued=await reportClient.send({project:projectName,findings:result.findings});
-          telegramDelivery={queued:true,id:queued.id};
+          const queued=await sendTelegramReport({project:projectName,findings:result.findings});
+          telegramDelivery={queued:true,id:queued.id,formats:queued.formats};
         }catch(error){
           telegramDelivery={queued:false,error:error.message};
         }

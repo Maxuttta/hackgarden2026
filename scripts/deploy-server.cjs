@@ -45,6 +45,10 @@ async function deploy(host) {
       'server/store.cjs', 'server/telegram.cjs', 'server/workspace.cjs', 'server/public',
       'server/package.json', 'server/package-lock.json', 'assets/fonts',
       'garden/workflow.cjs', 'garden/scanners.cjs', 'garden/custom.cjs', 'garden/services.cjs',
+      'garden/source-tokens.cjs', 'garden/gradle-analysis.cjs', 'garden/secret-analysis.cjs', 'garden/spring-analysis.cjs',
+      'garden/kotlin-flow.cjs',
+      'garden/workflow-templates.js', 'garden/block-presets.js',
+      'garden/catalog.cjs', 'garden/maven-advisories.json',
       'garden/github.cjs', 'garden/model.cjs', 'mobile/android/app/src/main/assets',
       'mobile/output/CyberGarden-debug.apk'
     ];

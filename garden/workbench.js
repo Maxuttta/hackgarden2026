@@ -137,6 +137,7 @@ async function loadTree(){
  try{
    const [list,info]=await Promise.all([garden.files(),garden.projectInfo()]);if(generation!==projectGeneration)return;
    draftProjectId=info.id;$('project').textContent=info.name;hasProjectFolder=info.local;
+   if(info.catalog)renderCatalog(info.catalog);
    $('filecount').textContent=list.length+' '+plural(list.length,['файл','файла','файлов']);
    if(info.warning)note(info.warning);
    const root=branch($('project').textContent);$('tree').append(root.box);

@@ -378,6 +378,9 @@ function activeTab(id){
 function emptyReport(icon,title,description){
  $('report').innerHTML='<div class="empty"><i>'+iconSvg(icon)+'</i><div><b>'+title+'</b><p>'+description+'</p></div></div>';
 }
+function telegramFileTypes(delivery){
+ return delivery.formats?.includes('json')?'PDF и JSON':'PDF';
+}
 function report(r){
  activeTab('latest');
  $('resultCount').hidden=!r;
@@ -389,21 +392,37 @@ function report(r){
  const total=findings.length+' '+plural(findings.length,['находка','находки','находок']);
  const delivered=r.log.findLast(l=>l.state==='Готово'&&l.name===kinds.notify[0]);
  const log='<details class="log" '+(r.ok?'':'open')+'><summary>Журнал выполнения</summary>'+r.log.map(l=>'<p>'+esc(l.name||l.id)+' · '+esc(l.state)+' '+esc(l.detail)+'</p>').join('')+'</details>';
+ const diagnostics=r.diagnostics??[];
+ const coverage=r.coverage??[];
+ const analysis=coverage.length||diagnostics.length
+   ?'<details class="log"><summary>Покрытие и диагностика · '+diagnostics.length+'</summary>'+
+     coverage.map(item=>'<p>'+esc(kinds[item.kind]?.[0]||item.kind)+' · файлов подходящих типов: '+esc(item.fileCount)+'</p>').join('')+
+     diagnostics.map(d=>'<p><code>'+esc(d.file)+':'+esc(d.line)+'</code> · '+esc(d.message)+'</p>').join('')+'</details>'
+   :'';
  $('report').innerHTML='<div class="report-head"><div><strong>'+(!r.ok?'Проверка остановлена':findings.length?total:'Проверка завершена')+'</strong><small>'+esc(r.project)+' · '+esc(new Date(r.time).toLocaleString())+'</small></div>'+
  (live&&findings.length?'<button id="inspectFirst">Разобрать находки '+iconSvg('chevronRight')+'</button>':'')+'</div>'+
- (delivered?'<div class="delivery">'+iconSvg('circleCheck')+esc(delivered.detail)+'</div>':'')+log+
- findings.map((f,i)=>'<details class="finding" '+(i===0?'open':'')+'><summary><span class="severity '+esc(f.severity)+'">'+esc(riskLabels[f.severity]||f.severity)+'</span><b>'+esc(f.title)+'</b><code>'+esc(f.file)+':'+esc(f.line)+'</code></summary><p>'+esc(f.fix)+' '+esc(f.reference)+'</p>'+(f.advice?'<p><b>AI</b>　'+esc(f.advice)+'</p>':'')+'</details>').join('')+
+ (delivered?'<div class="delivery">'+iconSvg('circleCheck')+esc(delivered.detail)+'</div>':'')+log+analysis+
+ findings.map((f,i)=>'<details class="finding" '+(i===0?'open':'')+'><summary><span class="severity '+esc(f.severity)+'">'+esc(riskLabels[f.severity]||f.severity)+'</span><b>'+esc(f.title)+'</b><code>'+esc(f.file)+':'+esc(f.line)+'</code></summary>'+(f.description&&f.description!==f.title?'<p>'+esc(f.description)+'</p>':'')+'<p>'+esc(f.fix)+' '+esc(f.reference)+'</p>'+(f.advice?'<p><b>AI</b>　'+esc(f.advice)+'</p>':'')+'</details>').join('')+
  (!findings.length&&r.ok?'<p>По выбранным правилам находок нет.</p>':'');
  const actions=document.createElement('div');actions.className='report-send';
  const sendButton=document.createElement('button');sendButton.id='sendTelegram';sendButton.innerHTML=iconSvg('send')+'Отправить в Telegram';sendButton.disabled=reportSending.has(r);
+ const jsonButton=document.createElement('button');jsonButton.innerHTML=iconSvg('download')+'Скачать JSON';
+ jsonButton.onclick=()=>{
+   const title='Cyber Garden · '+String(r.project||'Проверка проекта').slice(0,150);
+   const data={title,project:r.project,time:r.time,ok:r.ok,findings:r.findings};
+   const link=document.createElement('a');
+   const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)+'\n'],{type:'application/json'}));
+   link.href=url;link.download='cyber-garden-report.json';link.click();
+   setTimeout(()=>URL.revokeObjectURL(url),1000);
+ };
  const feedback=document.createElement('small');feedback.id='sendTelegramStatus';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');
  if(r.telegramDelivery){
    feedback.textContent=r.telegramDelivery.queued
-     ?'PDF поставлен в очередь отправки в Telegram.'
+     ?telegramFileTypes(r.telegramDelivery)+' в очереди отправки в Telegram.'
      :'Автоотправка в Telegram не удалась. '+r.telegramDelivery.error;
    if(r.telegramDelivery.queued&&r.telegramDelivery.id)feedback.title='Отчёт '+r.telegramDelivery.id;
  }
- actions.append(sendButton,feedback);$('report').querySelector('.report-head').after(actions);
+ actions.append(sendButton,jsonButton,feedback);$('report').querySelector('.report-head').after(actions);
  sendButton.onclick=async()=>{
    if(reportSending.has(r))return;
    reportSending.add(r);sendButton.disabled=true;feedback.textContent='Отправляем отчёт…';
@@ -411,8 +430,8 @@ function report(r){
      const account=await garden.reportAccount();
      if(!account.loggedIn){feedback.textContent='Войдите в аккаунт, затем нажмите отправку ещё раз.';await openReportAccount();return;}
      const result=await garden.sendReport(r);
-     feedback.textContent='Отчёт сохранён и поставлен в очередь Telegram. Доставка обычно занимает до 15 секунд.';
-     feedback.title='Отчёт '+result.id;note('Отчёт передан серверу для отправки PDF в Telegram.');
+     feedback.textContent=telegramFileTypes(result)+' в очереди отправки в Telegram.';
+     feedback.title='Отчёт '+result.id;note(feedback.textContent);
    }catch(error){feedback.textContent=connectionError(error);}
    finally{reportSending.delete(r);sendButton.disabled=false;}
  };
@@ -440,8 +459,8 @@ async function run(){
    }
    runProjects.set(r,projectGeneration);r.project=$('project').textContent;
    r.log.forEach(l=>l.name=kinds[graph.nodes.find(n=>n.id===l.id).type][0]);runs.unshift(r);runs=runs.slice(0,20);report(r);
-   note(r.telegramDelivery?.queued?'Проверка завершена. PDF в очереди Telegram.':
-     r.telegramDelivery?'Проверка завершена. Не удалось отправить PDF в Telegram.':
+   note(r.telegramDelivery?.queued?'Проверка завершена. '+telegramFileTypes(r.telegramDelivery)+' в очереди Telegram.':
+     r.telegramDelivery?'Проверка завершена. Не удалось отправить отчёт в Telegram.':
      r.ok?'Проверка завершена.':'Проверка остановлена. Подробности в журнале.');
    while(runs.length){try{localStorage.setItem('garden.history',JSON.stringify(runs));break;}catch{runs.pop();}}
  }catch(e){
@@ -461,7 +480,7 @@ function renderProgress(){
 }
 garden.status(s=>{
  if(s.phase==='telegram'){
-   const message='Ставим PDF в очередь отправки в Telegram…';
+   const message='Ставим отчёт в очередь отправки в Telegram…';
    if(busy&&$('latest').classList.contains('active'))$('report').querySelector('.run-progress b')?.replaceChildren(message);
    note(message);return;
  }
@@ -488,6 +507,9 @@ document.addEventListener('keydown',e=>{
  if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();run();}
  if(e.key==='Escape'&&(pending||cableGesture)){stopCable(true);pending=null;draw();note(help);}
 });
+function renderCatalog({name,count}){
+ $('catalogName').textContent=name+' · '+count+' '+plural(count,['запись','записи','записей']);
+}
 for(const kind of ['folder','catalog'])$(kind).onclick=async()=>{
  if(busy||importing)return;
  if(kind==='folder'&&!confirmDiscardSources())return;
@@ -501,7 +523,7 @@ for(const kind of ['folder','catalog'])$(kind).onclick=async()=>{
      await loadTree();showPane('report',false);
      note('Проект открыт. Нажмите «Запустить», чтобы проверить файлы.');
    }else{
-     $('catalogName').textContent=imported.name+' · '+imported.count+' '+plural(imported.count,['запись','записи','записей']);
+     renderCatalog(imported);
      note('Справочник подключён. Следующая проверка зависимостей использует его.');
    }
  }catch(e){note(e.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/,''));}
@@ -532,6 +554,7 @@ async function openConnections(fromGenerator=false){
    '<label>Токен сессии сервера отчётов (если требуется)<input id="hookKey" type="password" autocomplete="new-password"></label>'+
    '<label><input id="clearHookKey" type="checkbox"> Удалить сохранённый токен webhook</label></div><small id="deliveryHint"></small>'+
    '<hr><label><input id="autoSendTelegram" type="checkbox"> Автоматически отправлять PDF в Telegram</label>'+
+   '<label><input id="includeTelegramJson" type="checkbox"> Добавлять JSON к отчётам в Telegram</label>'+
    '<small>После успешной проверки. Чтобы привязать бота, откройте «Telegram» в верхней панели.</small>'+
    '<p id="connectionFeedback" role="alert"></p><button id="apply">Сохранить</button>'+
    (fromGenerator?'<button id="backToPrompt">К описанию</button>':''));
@@ -540,6 +563,7 @@ async function openConnections(fromGenerator=false){
  let current=originalProvider;
  provider.value=originalProvider;delivery.value=c.hasHook?'webhook':'local';
  $('autoSendTelegram').checked=c.autoSendTelegram;
+ $('includeTelegramJson').checked=c.includeTelegramJson;
  endpoint.value=local?'':c.endpoint;
  function updateKey(){
    const retained=c.hasKey&&endpoint.value.trim()===c.endpoint;
@@ -581,7 +605,7 @@ async function openConnections(fromGenerator=false){
      await garden.configure({model:provider.value==='rules'?'':model.value.trim(),endpoint:provider.value==='local'?localModelEndpoint:provider.value==='api'?endpoint.value.trim():c.endpoint,
        key:provider.value==='api'?key.value.trim():'',clearKey:provider.value==='api'&&$('clearKey').checked,
        hook:hook.value.trim(),hookKey:$('hookKey').value.trim(),clearHookKey:$('clearHookKey').checked,localDelivery:delivery.value==='local',
-       autoSendTelegram:$('autoSendTelegram').checked});
+       autoSendTelegram:$('autoSendTelegram').checked,includeTelegramJson:$('includeTelegramJson').checked});
      if(!button.isConnected||!$('modal').open)return;
      if(fromGenerator)await openGenerator();else $('modal').close();note('Подключения сохранены.');
    }catch(e){feedback.textContent=connectionError(e);}finally{button.disabled=false;}
@@ -662,8 +686,12 @@ $('generate').onclick=()=>openGenerator();
 async function templates(action='list',item){
  try{
  const {items,library}=await garden.library(action,item);
- const codeTemplates=gardenBlockPresets.map((definition,i)=>({title:definition.title,description:'Потенциальный риск: буквальный поиск «'+definition.needle+'»; результат требует проверки контекста.',graph:{nodes:[{id:'start',type:'manual',x:42,y:44},{id:'check',type:'custom',definition:structuredClone(definition),x:304,y:44},{id:'ai',type:'ai',x:566,y:44}],edges:[{from:'start',to:'check',port:'next'},{from:'check',to:'ai',port:'next'}]}}));
- const list=[...codeTemplates,{title:'Проверка Kotlin-проекта',description:'Секреты, зависимости и правила Spring с доставкой отчёта.',graph:initial},...items];
+ const comprehensive={nodes:initial.nodes.slice(0,-1),edges:initial.edges.slice(0,-1)};
+ const list=[
+   fullScanTemplate(),
+   {title:'Проверка с объяснением AI',description:'SECRET, SCA и SAST с пояснениями настроенной модели.',graph:comprehensive},
+   {title:'Проверка с отправкой отчёта',description:'SECRET, SCA и SAST, объяснение AI и отправка через webhook.',graph:initial},...items
+ ];
  if($('modal').open)$('modal').close();
  modal('<h2>Библиотека шаблонов</h2><small>'+esc(library)+'</small><p><button id="choose">Выбрать общую папку…</button></p>'+list.map((t,i)=>'<p><button data-template="'+i+'">'+esc(t.title)+'</button><br><small>'+esc(t.description)+'</small></p>').join('')+'<hr><label>Название текущего сценария<input id="templateName" maxlength="100"></label><label>Что он проверяет<input id="description" maxlength="500"></label><button id="publish">Опубликовать в папке</button>');
  $('choose').onclick=()=>templates('choose');

@@ -25,7 +25,7 @@ const {JsonRepository}=require('../server/store.cjs'),{ReportService}=require('.
   await page.locator('#reportPair').click();await page.locator('#reportPairCode').waitFor({state:'visible'});
   assert.match(await page.locator('#reportPairCode').innerText(),/\/login [a-f0-9]{24}/);
   await page.keyboard.press('Escape');await page.keyboard.press('Control+Enter');await page.locator('#sendTelegram').waitFor();
-  await page.locator('#sendTelegram').click();await page.waitForFunction(()=>document.getElementById('sendTelegramStatus')?.textContent.includes('поставлен в очередь'));
+  await page.locator('#sendTelegram').click();await page.waitForFunction(()=>document.getElementById('sendTelegramStatus')?.textContent.includes('в очереди отправки в Telegram'));
   let reports=await service.reports(auth);assert.equal(reports.length,1);assert.equal(reports[0].count,3);
   assert.equal(await repo.read(s=>s.deliveries.length),1);
   const pdfResponse=await fetch(base+'/api/reports/'+reports[0].id+'/pdf',{headers:{Authorization:'Bearer '+user.token}});
@@ -35,7 +35,7 @@ const {JsonRepository}=require('../server/store.cjs'),{ReportService}=require('.
   assert.match(await page.locator('#reportAccountStatus').innerText(),/smoke-user/);await page.keyboard.press('Escape');
   if(!await page.locator('#history').isVisible())await page.locator('#reportToggle').click();
   await page.locator('#history').click();await page.locator('.history-row').first().click();
-  await page.locator('#sendTelegram').click();await page.waitForFunction(()=>document.getElementById('sendTelegramStatus')?.textContent.includes('поставлен в очередь'));
+  await page.locator('#sendTelegram').click();await page.waitForFunction(()=>document.getElementById('sendTelegramStatus')?.textContent.includes('в очереди отправки в Telegram'));
   assert.equal((await service.reports(auth)).length,2);
   await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(900,680));
   await page.waitForFunction(()=>innerWidth===900);

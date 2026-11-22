@@ -44,6 +44,9 @@ test('direct send includes selected report, supports empty reports, and requires
  assert.equal((await f.client.send({project:'Проект',findings})).id,'saved-report');
  const sent=JSON.parse(f.calls.find(x=>x.url.endsWith('/api/reports')).body);
  assert.deepEqual(sent,{title:'Cyber Garden · Проект',findings});
+ await f.client.send({project:'Проект',findings},{includeJson:true});
+ const withJson=JSON.parse(f.calls.filter(x=>x.url.endsWith('/api/reports')).at(-1).body);
+ assert.deepEqual(withJson,{...sent,includeJson:true});
  await f.client.send({project:'Без находок',findings:[]});
  f.setLinked(false);const previous=f.calls.filter(x=>x.url.endsWith('/api/reports')).length;
  await assert.rejects(f.client.send({findings}),/Сначала подключите Telegram/);
